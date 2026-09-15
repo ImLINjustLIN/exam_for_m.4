@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ห้องเรียนรวม — สรุปทุกวิชา</title>
+<meta name="description" content="เว็บสรุปเนื้อหา 7 วิชา พร้อมสมุดจดส่วนตัวของแต่ละคน">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- ?v=เลขรุ่น: เพิ่มเลขนี้ทุกครั้งที่แก้ไฟล์ css/js
+     เพื่อบังคับให้เบราว์เซอร์โหลดของใหม่ ไม่ใช้ของเก่าที่ค้างอยู่ -->
+<link rel="stylesheet" href="css/styles.css?v=15">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+</head>
+<body>
+
+<!-- ===== แถบบนสุด ===== -->
+<header class="topbar">
+  <button class="brand" id="brandBtn" title="กลับหน้าแรก">
+    <span class="brand-logo">📚</span>
+    <span class="brand-name">ห้องเรียนรวม</span>
+  </button>
+
+  <div class="topbar-right">
+    <span class="save-state" id="saveState"></span>
+    <button class="icon-btn" id="themeBtn" title="สลับโหมดสว่าง/มืด">🌙</button>
+    <button class="icon-btn" id="accountBtn" title="บัญชีผู้ใช้">
+      <span id="accountLabel">เข้าสู่ระบบ</span>
+    </button>
+  </div>
+</header>
+
+<main id="app">
+
+  <!-- ===== หน้าแรก: เลือกวิชา ===== -->
+  <section class="screen" id="screen-home">
+    <div class="hero">
+      <h1 class="hero-title">เลือกวิชาที่ต้องการอ่าน</h1>
+      <p class="hero-sub">แตะที่วิชาเพื่อเข้าสู่สมุดสรุปของวิชานั้น — ทุกอย่างที่เขียนจะถูกบันทึกไว้ให้อัตโนมัติ</p>
+    </div>
+    <div class="subject-grid" id="subjectGrid"></div>
+  </section>
+
+  <!-- ===== หน้าเลือก หลัก / เสริม ===== -->
+  <section class="screen" id="screen-mode" hidden>
+    <button class="back-btn" data-back="home">← กลับไปเลือกวิชา</button>
+    <div class="hero">
+      <h1 class="hero-title" id="modeTitle"></h1>
+      <p class="hero-sub">คุณกำลังจะอ่านส่วนไหน?</p>
+    </div>
+    <div class="mode-grid" id="modeGrid"></div>
+  </section>
+
+  <!-- ===== หน้าสมุดจด ===== -->
+  <section class="screen screen-note" id="screen-note" hidden>
+    <div class="note-head">
+      <button class="back-btn" id="noteBack">← กลับ</button>
+      <div class="note-head-meta">
+        <span class="note-chip" id="noteChip"></span>
+        <h1 class="note-title" id="noteTitle"></h1>
+      </div>
+      <div class="note-tools">
+        <button class="tool-btn tool-test" id="btnMock" title="ทดลองทำข้อสอบหัวข้อนี้">📝 ทดลองทำข้อสอบ</button>
+        <button class="tool-btn" id="btnUndo" title="ย้อนกลับ (Ctrl+Z)" disabled>↶</button>
+        <button class="tool-btn" id="btnRedo" title="ไปข้างหน้า (Ctrl+Shift+Z)" disabled>↷</button>
+        <button class="tool-btn" id="btnLayers" title="จัดการชั้นของบล็อกอิสระ">🗂 ชั้น</button>
+        <button class="tool-btn" id="btnSearch" title="ค้นหาในหน้านี้">🔍 ค้นหา</button>
+        <button class="tool-btn" id="btnExport" title="ดาวน์โหลดสำรองข้อมูล">⬇ สำรองข้อมูล</button>
+        <button class="tool-btn" id="btnImport" title="นำไฟล์สำรองกลับเข้ามา">⬆ กู้คืน</button>
+        <button class="tool-btn" id="btnPrint" title="พิมพ์ / บันทึกเป็น PDF">🖨 พิมพ์</button>
+        <input type="file" id="importFile" accept="application/json" hidden>
+        <input type="file" id="noteImgFile" accept="image/*" hidden>
+      </div>
+    </div>
+
+    <div class="note-switch" id="noteSwitch">
+      <button data-note="diagram" class="on">🧩 โน้ตไดอะแกรม</button>
+      <button data-note="text">📝 โน้ตปกติ</button>
+    </div>
+
+    <div class="paper" id="paper">
+      <div class="blocks" id="blocks"></div>
+      <div class="empty-hint" id="emptyHint">
+        <p>หน้านี้ยังว่างอยู่ — เริ่มเขียนได้เลย</p>
+        <p class="dim">กดปุ่มด้านล่างเพื่อเพิ่มหัวข้อ ข้อความ รายการ หรือกล่องสรุป</p>
+      </div>
+      <div class="add-row">
+        <button class="add-btn" id="addBtn">＋ เพิ่มบล็อก</button>
+        <div class="add-menu" id="addMenu" hidden></div>
+      </div>
+    </div>
+
+    <aside class="layer-panel" id="layerPanel" hidden>
+      <div class="lp-head">
+        <span>ชั้นของบล็อกอิสระ</span>
+        <button class="lp-x" id="lpClose" title="ปิด">✕</button>
+      </div>
+      <p class="lp-hint">บนสุดของรายการ = อยู่หน้าสุด · ลากสลับลำดับได้</p>
+      <div class="lp-list" id="lpList"></div>
+    </aside>
+
+    <div class="diagram-wrap" id="diagramHost" hidden></div>
+  </section>
+
+</main>
+
+<!-- ===== กล่องเข้าสู่ระบบ ===== -->
+<div class="modal-backdrop" id="authModal" hidden>
+  <div class="modal">
+    <button class="modal-close" id="authClose">✕</button>
+    <h2 id="authTitle">เข้าสู่ระบบ</h2>
+    <p class="modal-sub" id="authSub">เข้าสู่ระบบเพื่อให้สมุดจดของคุณตามไปได้ทุกเครื่อง</p>
+
+    <div id="authForms">
+      <label class="field">
+        <span>อีเมล</span>
+        <input type="email" id="authEmail" autocomplete="email" placeholder="you@example.com">
+      </label>
+      <label class="field">
+        <span>รหัสผ่าน</span>
+        <input type="password" id="authPassword" autocomplete="current-password" placeholder="อย่างน้อย 6 ตัวอักษร">
+      </label>
+      <p class="auth-msg" id="authMsg"></p>
+      <div class="auth-actions">
+        <button class="btn-primary" id="btnLogin">เข้าสู่ระบบ</button>
+        <button class="btn-ghost" id="btnSignup">สมัครสมาชิกใหม่</button>
+      </div>
+      <button class="btn-link" id="btnGuest">ใช้งานแบบไม่ล็อกอิน (บันทึกในเครื่องนี้เท่านั้น)</button>
+    </div>
+
+    <div id="authSignedIn" hidden>
+      <p class="signed-as">กำลังใช้งานในชื่อ <b id="authWho"></b></p>
+      <button class="btn-primary" id="btnLogout">ออกจากระบบ</button>
+    </div>
+
+    <p class="cloud-off" id="cloudOff" hidden>
+      ⚠️ ยังไม่ได้เชื่อมต่อฐานข้อมูล — ตอนนี้เว็บจะบันทึกข้อมูลไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น
+    </p>
+  </div>
+</div>
+
+<!-- กล่องทดลองทำข้อสอบ -->
+<script src="js/config.js?v=15"></script>
+<script src="js/content.js?v=15"></script>
+<script src="js/content-chem.js?v=15"></script>
+<script src="js/content-math.js?v=15"></script>
+<script src="js/content-bio.js?v=15"></script>
+<script src="js/banks.js?v=15"></script>
+<script src="js/bank-chem.js?v=15"></script>
+<script src="js/bank-math.js?v=15"></script>
+<script src="js/bank-bio.js?v=15"></script>
+<script src="js/storage.js?v=15"></script>
+<script src="js/detail.js?v=15"></script>
+<script src="js/canvas.js?v=15"></script>
+<script src="js/find.js?v=15"></script>
+<script src="js/quiz.js?v=15"></script>
+<script src="js/app.js?v=15"></script>
+</body>
+</html>
