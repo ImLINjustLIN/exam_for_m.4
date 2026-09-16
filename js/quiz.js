@@ -17,6 +17,9 @@ const Quiz = (() => {
 
   let host = null;
   let S = null;          // สถานะข้อสอบชุดปัจจุบัน
+  let pad = null;        // กล่องกระดานทดเลข
+  let padOn = false;     // กำลังเปิดอยู่ไหม
+  let padDoc = { items: [] };   // สิ่งที่เขียนไว้ในกระดานทดของชุดนี้
 
   /* ---------------- คลังข้อสอบ + ประวัติข้อที่เคยเจอ ---------------- */
   function bank(topicId) {
@@ -105,15 +108,94 @@ const Quiz = (() => {
     });
     document.addEventListener("keydown", (e) => {
       if (host.hidden) return;
-      if (e.key === "Escape") { e.preventDefault(); confirmExit(); }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        if (padOn) { togglePad(false); return; }   // ปิดกระดานทดก่อน ยังไม่ออกจากข้อสอบ
+        confirmExit();
+      }
     });
     return host;
   }
   function show(html) { ensureHost().hidden = false; host.innerHTML = html;
                         document.body.classList.add("qz-open");
-                        const w = host.querySelector(".qz-win"); if (w) w.scrollTop = 0; }
-  function close() { if (host) { host.hidden = true; host.innerHTML = ""; }
+                        const w = host.querySelector(".qz-win"); if (w) w.scrollTop = 0;
+                        syncPadBtn(); }
+  function close() { togglePad(false); padDoc = { items: [] };
+                     if (host) { host.hidden = true; host.innerHTML = ""; }
                      document.body.classList.remove("qz-open"); S = null; }
+
+  /* ============================================================
+     กระดานทดเลข — กระดานเปล่าแบบเดียวกับโน้ตไดอะแกรม ไม่มีเนื้อหาอะไรอยู่
+     ใช้คำนวณระหว่างทำข้อสอบ ไม่ถูกบันทึกและไม่มีผลต่อคะแนน
+     ล้างทุกครั้งที่เริ่มชุดใหม่หรือปิดหน้าข้อสอบ
+     ------------------------------------------------------------
+     DiagramNote เป็นตัวเดียวทั้งเว็บ ตอนเปิดกระดานทดจึงต้อง
+     บันทึกกระดานหลักก่อน แล้วค่อยยืมมาใช้ พอปิดก็คืนให้กระดานหลักเหมือนเดิม
+     ============================================================ */
+  function padHost() {
+    if (pad) return pad;
+    pad = document.createElement("div");
+    pad.className = "qz-pad";
+    pad.hidden = true;
+    pad.innerHTML = '<div class="qz-pad-head">' +
+      '<span>🧮 กระดานทด — เขียนคำนวณได้ตามสบาย ไม่มีผลต่อคะแนน และจะไม่ถูกบันทึกไว้</span>' +
+      '<button class="qz-pad-x" type="button">ซ่อนกระดาน ✕</button></div>' +
+      '<div class="qz-pad-body"></div>';
+    document.body.appendChild(pad);
+    pad.querySelector(".qz-pad-x").addEventListener("click", () => togglePad(false));
+    return pad;
+  }
+
+  function togglePad(on) {
+    if (!pad && on === false) return;           // ยังไม่เคยเปิด ไม่ต้องทำอะไร
+    const p = padHost();
+    const want = (on === undefined) ? !padOn : !!on;
+    if (want === padOn) { syncPadBtn(); return; }
+
+    if (want) {
+      if (typeof DiagramNote === "undefined") return;
+      try { if (typeof saveCanvasNow === "function") saveCanvasNow(); } catch (e) {}
+      p.hidden = false;
+      document.body.classList.add("qz-pad-open");
+      DiagramNote.mount(p.querySelector(".qz-pad-body"), {
+        pad: true,
+        onChange: () => {},
+        onMockTest: () => {},
+        onFind: () => {},
+        onExit: () => togglePad(false)
+      });
+      DiagramNote.setDoc(padDoc);
+      padOn = true;
+    } else {
+      try {
+        if (typeof DiagramNote !== "undefined") {
+          if (DiagramNote.getDoc) { const d = DiagramNote.getDoc(); if (d) padDoc = d; }
+          DiagramNote.destroy();
+        }
+      } catch (e) {}
+      p.hidden = true;
+      document.body.classList.remove("qz-pad-open");
+      padOn = false;
+      remountBoard();
+    }
+    syncPadBtn();
+  }
+
+  /* คืนกระดานหลักให้หน้าสมุดจดเหมือนเดิม */
+  function remountBoard() {
+    try {
+      if (typeof mountCanvas === "function" && typeof state !== "undefined" &&
+          state && state.noteMode === "diagram" && state.topic) mountCanvas();
+    } catch (e) {}
+  }
+
+  function syncPadBtn() {
+    if (!host) return;
+    const b = host.querySelector('[data-q="pad"]');
+    if (!b) return;
+    b.classList.toggle("on", padOn);
+    b.textContent = padOn ? "🧮 ซ่อนกระดานทด" : "🧮 กระดานทด";
+  }
 
   function open(topicId, topicName) {
     if (!bank(topicId).length) {
@@ -200,6 +282,7 @@ const Quiz = (() => {
   }
 
   function launch(built) {
+    togglePad(false); padDoc = { items: [] };      // ชุดใหม่ = กระดานทดเปล่าใหม่
     S.qs = built.qs.map(q => ({ ...q, pick: null, skipped: false, revealed: false }));
     S.i = 0; S.done = false; S.started = Date.now();
     addSeen(S.topicId, S.qs.map(q => q.id));
@@ -237,6 +320,7 @@ const Quiz = (() => {
             <span class="qz-tag">${escapeHtml(q.t || "")}</span>
             <span class="qz-tag ${DIFF_CLASS[q.d] || "d-m"}">${DIFF_LABEL[q.d] || "ปานกลาง"}</span>
           </span>
+          <button class="qz-padbtn" data-q="pad" type="button">🧮 กระดานทด</button>
           <button class="qz-x" data-q="exit" title="ออกจากข้อสอบ">✕</button>
         </div>
       </div>
@@ -368,6 +452,7 @@ const Quiz = (() => {
       case "n":      S.n = clampN(v); setupScreen(); break;
       case "mode":   S.mode = v; setupScreen(); break;
       case "start":  start(); break;
+      case "pad":    togglePad(); break;
       case "go":
         if (v === undefined) { launch(S.pending); S.pending = null; }
         else { S.i = clampI(+v); question(); }

@@ -98,6 +98,7 @@ const DiagramNote = (() => {
   let outsideClose = null;
   let lastTap = { t: 0, x: 0, y: 0, id: null };
   let textBar = null;
+  let padMode = false;          // true = กระดานทดเลขในหน้าข้อสอบ (ซ่อนปุ่มที่ไม่เกี่ยว)
 
   const widthOf = (v) => 0.6 + (v - 1) * 0.35;      // 1→0.6px, 100→35.3px
   const uid = () => "i" + Math.random().toString(36).slice(2, 9);
@@ -1065,8 +1066,8 @@ const DiagramNote = (() => {
     clearHold();
 
     if (drag.k === "draw") {
-      if (drag.it.pts.length < 4) doc.items = doc.items.filter(i => i.id !== drag.it.id);
-      changed(); render();
+      if (drag.it.pts.length < 4) { doc.items = doc.items.filter(i => i.id !== drag.it.id); changed(); render(); }
+      else if (!tryScribbleErase(drag.it)) { changed(); render(); }
 
     } else if (drag.k === "shape") {
       const it = drag.it;
@@ -1156,6 +1157,105 @@ const DiagramNote = (() => {
     const it = itemAt(cx, cy); if (!it) return;
     if (!drag.erased) { pushHistory(); drag.erased = true; }
     removeIds(new Set([it.id])); render(); changed();
+  }
+
+  /* ---------- ขีดฆ่าเพื่อลบ ----------
+     ขีดปากกากลับไปกลับมาทับของชิ้นไหน = ลบชิ้นนั้น เหมือนขีดฆ่าในสมุดจริง
+     จะนับว่าเป็น "การขีดฆ่า" ก็ต่อเมื่อครบทุกข้อนี้ ไม่งั้นถือเป็นลายมือธรรมดา
+       · หักกลับทิศ (มุมเกิน 120 องศา) อย่างน้อย SCRIB_TURNS ครั้ง
+       · เส้นยาวรวมอย่างน้อย SCRIB_MIN_LEN
+       · ยาวกว่าเส้นทแยงมุมของกรอบตัวเองอย่างน้อย SCRIB_RATIO เท่า (วนอยู่ในที่แคบ ๆ)
+       · ต้องทับของจริงอย่างน้อย 1 ชิ้น ถ้าไม่ทับอะไรเลยก็เก็บรอยขีดไว้ตามปกติ
+     ไม่ลบการ์ด (t === "c") เพราะเป็นเนื้อหาหลัก กันลบพลาด — ใช้ปุ่มลบหรือยางลบแทน
+     ประวัติถูก pushHistory() ไว้ตั้งแต่ตอนเริ่มลากแล้ว กด Ctrl+Z ครั้งเดียวได้ของคืนครบ */
+  const SCRIB_TURNS = 4, SCRIB_SEG = 10, SCRIB_MIN_LEN = 80, SCRIB_RATIO = 1.9, SCRIB_NEAR = 12;
+
+  function strokeTurns(p) {
+    let turns = 0, len = 0, ax = 0, ay = 0, have = false;
+    let sx = p[0], sy = p[1], acc = 0;
+    for (let i = 2; i < p.length; i += 2) {
+      const d = dist(p[i-2], p[i-1], p[i], p[i+1]);
+      len += d; acc += d;
+      if (acc < SCRIB_SEG) continue;                 // ช่วงสั้นเกินไป ยังไม่นับทิศ
+      const vx = p[i] - sx, vy = p[i+1] - sy;
+      const vl = Math.hypot(vx, vy) || 1;
+      const ux = vx / vl, uy = vy / vl;
+      if (have && (ux * ax + uy * ay) < -0.5) turns++;   // ย้อนกลับทางเดิม
+      ax = ux; ay = uy; have = true;
+      sx = p[i]; sy = p[i+1]; acc = 0;
+    }
+    return { turns, len };
+  }
+
+  function nearSeg(px, py, x1, y1, x2, y2, r) {
+    const dx = x2 - x1, dy = y2 - y1, L2 = dx*dx + dy*dy;
+    let t = L2 ? ((px - x1) * dx + (py - y1) * dy) / L2 : 0;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    return Math.hypot(px - (x1 + t*dx), py - (y1 + t*dy)) <= r;
+  }
+
+  /* เส้นตรงสองเส้นตัดกันไหม (ใช้เช็กว่ารอยขีดพาดผ่านของชิ้นนั้นจริง) */
+  function segCross(ax, ay, bx, by, cx, cy, dx, dy) {
+    const d1 = (bx-ax)*(cy-ay) - (by-ay)*(cx-ax);
+    const d2 = (bx-ax)*(dy-ay) - (by-ay)*(dx-ax);
+    const d3 = (dx-cx)*(ay-cy) - (dy-cy)*(ax-cx);
+    const d4 = (dx-cx)*(by-cy) - (dy-cy)*(bx-cx);
+    return ((d1 > 0) !== (d2 > 0)) && ((d3 > 0) !== (d4 > 0));
+  }
+  function segHitsSeg(p, i, x1, y1, x2, y2) {
+    return segCross(p[i-2], p[i-1], p[i], p[i+1], x1, y1, x2, y2) ||
+           nearSeg(p[i], p[i+1], x1, y1, x2, y2, SCRIB_NEAR);
+  }
+  function segHitsBox(p, i, b) {
+    const inBox = (x, y) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+    if (inBox(p[i], p[i+1]) || inBox(p[i-2], p[i-1])) return true;
+    const E = [[b.x,b.y,b.x+b.w,b.y], [b.x+b.w,b.y,b.x+b.w,b.y+b.h],
+               [b.x+b.w,b.y+b.h,b.x,b.y+b.h], [b.x,b.y+b.h,b.x,b.y]];
+    for (const e of E) if (segCross(p[i-2], p[i-1], p[i], p[i+1], e[0], e[1], e[2], e[3])) return true;
+    return false;
+  }
+
+  /* ของชิ้นไหนโดนรอยขีดนี้ทับบ้าง (ต้องโดนอย่างน้อย 2 ช่วง กันแค่ลากผ่านเฉียด ๆ) */
+  function scribbleHits(st) {
+    const p = st.pts, ids = [];
+    doc.items.forEach(it => {
+      if (it.id === st.id || it.t === "c") return;
+      let hit = 0;
+      if (it.t === "k") {
+        for (let i = 2; i < p.length && hit < 2; i += 2)
+          for (let j = 2; j < it.pts.length; j += 2)
+            if (segHitsSeg(p, i, it.pts[j-2], it.pts[j-1], it.pts[j], it.pts[j+1])) { hit++; break; }
+      } else if (it.t === "l" || it.t === "n") {
+        const q = it.t === "n" ? connPoints(it)
+                               : { a: { x: it.x1, y: it.y1 }, b: { x: it.x2, y: it.y2 } };
+        for (let i = 2; i < p.length && hit < 2; i += 2)
+          if (segHitsSeg(p, i, q.a.x, q.a.y, q.b.x, q.b.y)) hit++;
+      } else {
+        const b = visualBox(it); if (!b) return;
+        for (let i = 2; i < p.length && hit < 2; i += 2)
+          if (segHitsBox(p, i, b)) hit++;
+      }
+      if (hit >= 2) ids.push(it.id);
+    });
+    return ids;
+  }
+
+  function tryScribbleErase(st) {
+    const p = st.pts;
+    if (!p || p.length < 12) return false;
+    const s = strokeTurns(p);
+    if (s.turns < SCRIB_TURNS || s.len < SCRIB_MIN_LEN) return false;
+    const b = bboxOf(st), diag = Math.hypot(b.w, b.h) || 1;
+    if (s.len / diag < SCRIB_RATIO) return false;
+    const ids = scribbleHits(st);
+    if (!ids.length) return false;                   // ไม่ทับอะไรเลย = ลายมือธรรมดา
+    const kill = new Set(ids); kill.add(st.id);      // ลบรอยขีดของตัวเองไปด้วย
+    removeIds(kill);
+    ids.forEach(id => sel.delete(id));
+    render(); changed();
+    toast("ขีดฆ่า — ลบไป " + ids.length + " ชิ้น (กด Ctrl+Z เพื่อเรียกคืน)");
+    if (navigator.vibrate) { try { navigator.vibrate(14); } catch (e) {} }
+    return true;
   }
 
   /* ---------- ค้างปากกาเพื่อแปลงรูปทรง ---------- */
@@ -1319,7 +1419,7 @@ const DiagramNote = (() => {
      ============================================================ */
   function buildUI() {
     root = document.createElement("div");
-    root.className = "dn-root";
+    root.className = padMode ? "dn-root dn-pad" : "dn-root";
     root.innerHTML = `
       <div class="dn-bar">
         <button class="dn-btn dn-exit" data-act="exit" title="กลับไปโน้ตปกติ">📝 โน้ตปกติ</button>
@@ -1640,6 +1740,7 @@ const DiagramNote = (() => {
   function mount(hostEl, opts) {
     destroy();
     host = hostEl;
+    padMode = !!(opts && opts.pad);
     onChange   = (opts && opts.onChange)   || (() => {});
     onMockTest = (opts && opts.onMockTest) || (() => {});
     onExit     = (opts && opts.onExit)     || (() => {});
