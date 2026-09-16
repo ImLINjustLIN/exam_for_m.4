@@ -1163,12 +1163,20 @@ const DiagramNote = (() => {
      ขีดปากกากลับไปกลับมาทับของชิ้นไหน = ลบชิ้นนั้น เหมือนขีดฆ่าในสมุดจริง
      จะนับว่าเป็น "การขีดฆ่า" ก็ต่อเมื่อครบทุกข้อนี้ ไม่งั้นถือเป็นลายมือธรรมดา
        · หักกลับทิศ (มุมเกิน 120 องศา) อย่างน้อย SCRIB_TURNS ครั้ง
+         = ต้องขีด "ไป 4 กลับ 4" รวม 8 เที่ยว ถึงจะนับ (Taco สั่งให้เข้มขึ้น 16 ก.ย.
+         เพราะลายมือแปลก ๆ ของนักเรียนเคยถูกเข้าใจผิดว่าเป็นการขีดฆ่า)
        · เส้นยาวรวมอย่างน้อย SCRIB_MIN_LEN
        · ยาวกว่าเส้นทแยงมุมของกรอบตัวเองอย่างน้อย SCRIB_RATIO เท่า (วนอยู่ในที่แคบ ๆ)
-       · ต้องทับของจริงอย่างน้อย 1 ชิ้น ถ้าไม่ทับอะไรเลยก็เก็บรอยขีดไว้ตามปกติ
+       · ต้องทับของจริงอย่างน้อย SCRIB_HITS ช่วง ถ้าไม่ทับอะไรเลยก็เก็บรอยขีดไว้ตามปกติ
      ไม่ลบการ์ด (t === "c") เพราะเป็นเนื้อหาหลัก กันลบพลาด — ใช้ปุ่มลบหรือยางลบแทน
      ประวัติถูก pushHistory() ไว้ตั้งแต่ตอนเริ่มลากแล้ว กด Ctrl+Z ครั้งเดียวได้ของคืนครบ */
-  const SCRIB_TURNS = 4, SCRIB_SEG = 10, SCRIB_MIN_LEN = 80, SCRIB_RATIO = 1.9, SCRIB_NEAR = 12;
+  const SCRIB_TURNS = 7;        // หักกลับทิศ 7 ครั้ง = ขีดไป-กลับรวม 8 เที่ยว
+  const SCRIB_HINT  = 4;        // ถ้าหักกลับได้เท่านี้แล้วยังไม่ถึงเกณฑ์ ให้ขึ้นคำใบ้
+  const SCRIB_SEG   = 12;       // ความยาวขั้นต่ำของหนึ่งเที่ยว (ตัดการสั่นมือทิ้ง)
+  const SCRIB_MIN_LEN = 150;    // ความยาวเส้นรวมขั้นต่ำ
+  const SCRIB_RATIO = 2.4;      // เส้นต้องยาวกว่าเส้นทแยงมุมกรอบตัวเองกี่เท่า
+  const SCRIB_NEAR  = 12;       // ระยะที่ถือว่าโดนของ
+  const SCRIB_HITS  = 3;        // ต้องพาดผ่านของชิ้นนั้นกี่ช่วงถึงจะนับว่าตั้งใจลบ
 
   function strokeTurns(p) {
     let turns = 0, len = 0, ax = 0, ay = 0, have = false;
@@ -1215,27 +1223,27 @@ const DiagramNote = (() => {
     return false;
   }
 
-  /* ของชิ้นไหนโดนรอยขีดนี้ทับบ้าง (ต้องโดนอย่างน้อย 2 ช่วง กันแค่ลากผ่านเฉียด ๆ) */
+  /* ของชิ้นไหนโดนรอยขีดนี้ทับบ้าง (ต้องโดนอย่างน้อย SCRIB_HITS ช่วง กันแค่ลากผ่านเฉียด ๆ) */
   function scribbleHits(st) {
     const p = st.pts, ids = [];
     doc.items.forEach(it => {
       if (it.id === st.id || it.t === "c") return;
       let hit = 0;
       if (it.t === "k") {
-        for (let i = 2; i < p.length && hit < 2; i += 2)
+        for (let i = 2; i < p.length && hit < SCRIB_HITS; i += 2)
           for (let j = 2; j < it.pts.length; j += 2)
             if (segHitsSeg(p, i, it.pts[j-2], it.pts[j-1], it.pts[j], it.pts[j+1])) { hit++; break; }
       } else if (it.t === "l" || it.t === "n") {
         const q = it.t === "n" ? connPoints(it)
                                : { a: { x: it.x1, y: it.y1 }, b: { x: it.x2, y: it.y2 } };
-        for (let i = 2; i < p.length && hit < 2; i += 2)
+        for (let i = 2; i < p.length && hit < SCRIB_HITS; i += 2)
           if (segHitsSeg(p, i, q.a.x, q.a.y, q.b.x, q.b.y)) hit++;
       } else {
         const b = visualBox(it); if (!b) return;
-        for (let i = 2; i < p.length && hit < 2; i += 2)
+        for (let i = 2; i < p.length && hit < SCRIB_HITS; i += 2)
           if (segHitsBox(p, i, b)) hit++;
       }
-      if (hit >= 2) ids.push(it.id);
+      if (hit >= SCRIB_HITS) ids.push(it.id);
     });
     return ids;
   }
@@ -1244,9 +1252,15 @@ const DiagramNote = (() => {
     const p = st.pts;
     if (!p || p.length < 12) return false;
     const s = strokeTurns(p);
-    if (s.turns < SCRIB_TURNS || s.len < SCRIB_MIN_LEN) return false;
     const b = bboxOf(st), diag = Math.hypot(b.w, b.h) || 1;
-    if (s.len / diag < SCRIB_RATIO) return false;
+    const tight = s.len / diag >= SCRIB_RATIO;       // วนอยู่ในที่แคบ ๆ แบบการขีดฆ่า
+    if (s.turns < SCRIB_TURNS || s.len < SCRIB_MIN_LEN || !tight) {
+      /* ขีดมาทางนั้นแล้วแต่ยังไม่ถึงเกณฑ์ และทับของอยู่จริง → บอกใบ้ว่าขีดต่ออีกหน่อย
+         (ไม่ลบอะไรทั้งนั้น รอยขีดยังอยู่ตามปกติ) */
+      if (s.turns >= SCRIB_HINT && tight && scribbleHits(st).length)
+        toast("จะลบด้วยการขีดฆ่า ต้องขีดกลับไปกลับมาให้ครบ 8 เที่ยว (ไป 4 กลับ 4) ทับของชิ้นนั้น");
+      return false;
+    }
     const ids = scribbleHits(st);
     if (!ids.length) return false;                   // ไม่ทับอะไรเลย = ลายมือธรรมดา
     const kill = new Set(ids); kill.add(st.id);      // ลบรอยขีดของตัวเองไปด้วย
