@@ -138,7 +138,7 @@ const Quiz = (() => {
     pad.className = "qz-pad";
     pad.hidden = true;
     pad.innerHTML = '<div class="qz-pad-head">' +
-      '<span>🧮 กระดานทด — เขียนคำนวณได้ตามสบาย ไม่มีผลต่อคะแนน และจะไม่ถูกบันทึกไว้</span>' +
+      '<span>🧮 กระดานทด — ปากกาพร้อมเขียนแล้ว · กด ✏️ เปลี่ยนสี/ขนาด · 🧽 ลบ · ↖ ย้าย · ไม่มีผลต่อคะแนนและไม่ถูกบันทึก</span>' +
       '<button class="qz-pad-x" type="button">ซ่อนกระดาน ✕</button></div>' +
       '<div class="qz-pad-body"></div>';
     document.body.appendChild(pad);
