@@ -581,6 +581,115 @@
     { id: "n8", t: "n", a: { id: "d0" }, b: { id: "d1" }, c: "auto", w: 2, arrow: "end", route: "e" },
     { id: "x1", t: "n", a: { id: "a2" }, b: { id: "b0" }, c: "#8a8a8a", w: 1.5, arrow: "end", route: "s", dash: 6 },
     { id: "x2", t: "n", a: { id: "b1" }, b: { id: "c2" }, c: "#8a8a8a", w: 1.5, arrow: "end", route: "s", dash: 6 },
-    { id: "x3", t: "n", a: { id: "b3" }, b: { id: "d0" }, c: "#8a8a8a", w: 1.5, arrow: "end", route: "s", dash: 6 }
+    { id: "x3", t: "n", a: { id: "b3" }, b: { id: "d0" }, c: "#8a8a8a", w: 1.5, arrow: "end", route: "s", dash: 6 },
+
+    /* ===== คอลัมน์เพิ่มเติม · กฎการเปลี่ยนรูปแบบครบชุด =====
+       แยกเป็นการ์ดใหม่ (id ใหม่) แทนการแก้ detail ของ b1
+       เพราะระบบผสานเนื้อหาใน app.js ใช้ id เป็นลายนิ้วมือของไอเทมไดอะแกรม
+       ถ้าไปแก้ detail ของการ์ดเดิม คนที่เคยเปิดหัวข้อนี้แล้วจะไม่ได้ของใหม่เลย */
+    { id: "lb5", t: "x", x: 1420, y: 66, w: 250,
+      html: "เพิ่มเติม · แผ่นสรุปกฎ", size: 15, bold: true, c: "#2e9e6b" },
+
+    { id: "b4", t: "c", x: 1420, y: 100, w: 250, c: "#2e9e6b",
+      title: "กฎการเปลี่ยนรูป ครบชุด",
+      body: "แจกแจง · นิจพล · ดูดกลืน<br>T/F · ส่งออก · นิเสธของ ↔",
+      detail: `<h3>กฎการเปลี่ยนรูปแบบครบชุด</h3>
+<p>ใช้เป็นแผ่นสรุปเปิดดูตอนทำโจทย์ได้เลย · ทุกกฎในตารางนี้พิสูจน์ด้วยตารางค่าความจริงครบทุกแถวแล้ว</p>
+
+<h4>① กฎการแจกแจงทั้งสองรูป</h4>
+<p class="frm">p ∧ (q ∨ r) ≡ (p ∧ q) ∨ (p ∧ r)</p>
+<p class="frm">p ∨ (q ∧ r) ≡ (p ∨ q) ∧ (p ∨ r)</p>
+<table><tr><th>p</th><th>q</th><th>r</th><th>p ∨ (q ∧ r)</th><th>(p∨q) ∧ (p∨r)</th></tr>
+<tr><td>T</td><td>T</td><td>T</td><td>T</td><td>T</td></tr>
+<tr><td>T</td><td>T</td><td>F</td><td>T</td><td>T</td></tr>
+<tr><td>T</td><td>F</td><td>T</td><td>T</td><td>T</td></tr>
+<tr><td>T</td><td>F</td><td>F</td><td>T</td><td>T</td></tr>
+<tr><td>F</td><td>T</td><td>T</td><td>T</td><td>T</td></tr>
+<tr><td>F</td><td>T</td><td>F</td><td>F</td><td>F</td></tr>
+<tr><td>F</td><td>F</td><td>T</td><td>F</td><td>F</td></tr>
+<tr><td>F</td><td>F</td><td>F</td><td>F</td><td>F</td></tr></table>
+<div class="box tip"><b>วิธีจำ</b> ตัวเชื่อมข้างนอกแจกเข้าไปหาทั้งสองตัวข้างใน แล้วตัวเชื่อมข้างในกลายเป็นตัวเชื่อมข้างนอก — สลับบทบาทกันพอดี</div>
+
+<h4>② กฎนิจพล และกฎการดูดกลืน</h4>
+<table><tr><th>ชื่อกฎ</th><th>รูป</th><th>ใช้ตอนไหน</th></tr>
+<tr><td>นิจพล</td><td>p ∧ p ≡ p &nbsp;·&nbsp; p ∨ p ≡ p</td><td>ตัวซ้ำกันยุบเหลือตัวเดียว</td></tr>
+<tr><td>ดูดกลืน</td><td>p ∨ (p ∧ q) ≡ p &nbsp;·&nbsp; p ∧ (p ∨ q) ≡ p</td><td>เห็น p ซ้ำสองชั้น ตัดวงเล็บทิ้งได้เลย</td></tr></table>
+<div class="box why"><b>ทำไมการดูดกลืนถึงจริง</b><br>ถ้า p จริง ทั้งก้อนก็จริงอยู่แล้วไม่ว่า q จะเป็นอะไร · ถ้า p เท็จ ทั้งก้อนก็เท็จอยู่ดี — q จึงไม่มีผลเลย</div>
+
+<h4>③ ประพจน์ที่จับคู่กับ T หรือ F</h4>
+<table><tr><th>รูป</th><th>ผลลัพธ์</th><th>รูป</th><th>ผลลัพธ์</th></tr>
+<tr><td>p ∨ T</td><td>T</td><td>p ∧ T</td><td>p</td></tr>
+<tr><td>p ∨ F</td><td>p</td><td>p ∧ F</td><td>F</td></tr>
+<tr><td>p → T</td><td>T</td><td>T → p</td><td>p</td></tr>
+<tr><td>p → F</td><td>~p</td><td>F → p</td><td>T</td></tr>
+<tr><td>p ↔ T</td><td>p</td><td>p ↔ F</td><td>~p</td></tr></table>
+<div class="box warn"><b>สองตัวที่พลาดบ่อยที่สุด</b><br>p → F ≡ ~p (ไม่ใช่ F) · F → p ≡ T (เหตุเท็จทำให้ทั้งประโยคจริงเสมอ ไม่ว่าผลจะเป็นอะไร)</div>
+
+<h4>④ ประพจน์ที่จับคู่กับนิเสธของตัวเอง</h4>
+<table><tr><th>รูป</th><th>ผลลัพธ์</th><th>อ่านว่า</th></tr>
+<tr><td>p ∨ ~p</td><td>T</td><td>สัจนิรันดร์ — ยังไงก็จริง</td></tr>
+<tr><td>p ∧ ~p</td><td>F</td><td>ข้อขัดแย้ง — ยังไงก็เท็จ</td></tr>
+<tr><td>p → ~p</td><td>~p</td><td>ยุบเหลือนิเสธของตัวเอง</td></tr>
+<tr><td>~p → p</td><td>p</td><td>ยุบเหลือตัวเอง</td></tr>
+<tr><td>p ↔ ~p</td><td>F</td><td>เป็นจริงพร้อมกันไม่ได้</td></tr></table>
+
+<h4>⑤ กฎการส่งออก และนิเสธของ ↔</h4>
+<p class="frm">(p ∧ q) → r ≡ p → (q → r)</p>
+<p class="frm">~(p ↔ q) ≡ (p ∧ ~q) ∨ (~p ∧ q) ≡ p ↔ ~q</p>
+<table><tr><th>p</th><th>q</th><th>p ↔ q</th><th>~(p ↔ q)</th><th>(p∧~q) ∨ (~p∧q)</th></tr>
+<tr><td>T</td><td>T</td><td>T</td><td>F</td><td>F</td></tr>
+<tr><td>T</td><td>F</td><td>F</td><td>T</td><td>T</td></tr>
+<tr><td>F</td><td>T</td><td>F</td><td>T</td><td>T</td></tr>
+<tr><td>F</td><td>F</td><td>T</td><td>F</td><td>F</td></tr></table>
+<div class="box tip"><b>อ่าน ~(p ↔ q) เป็นภาษาคน</b> คือ “สองตัวนี้มีค่าความจริงต่างกัน”</div>
+
+<h4>⑥ เมื่อหน้าหรือหลังของ → เป็นก้อน</h4>
+<table><tr><th>รูป</th><th>สมมูลกับ</th></tr>
+<tr><td>(p ∨ q) → r</td><td>(p → r) ∧ (q → r)</td></tr>
+<tr><td>p → (q ∧ r)</td><td>(p → q) ∧ (p → r)</td></tr></table>
+<div class="box why"><b>สังเกตว่าออกมาเป็น ∧ ทั้งคู่</b><br>“ถ้า p หรือ q อย่างใดอย่างหนึ่งเกิด แล้ว r” แปลว่าต้องรับประกันทั้งสองทาง จึงต้องจริงพร้อมกัน</div>
+
+<h4>⑦ เดอมอร์แกนเมื่อมีสามตัวขึ้นไป</h4>
+<p class="frm">~(p ∧ q ∧ r) ≡ ~p ∨ ~q ∨ ~r &nbsp;&nbsp;·&nbsp;&nbsp; ~(p ∨ q ∨ r) ≡ ~p ∧ ~q ∧ ~r</p>
+<div class="box tip">กฎเดิมทุกประการ แค่แจกนิเสธเข้าไปให้ครบทุกตัวแล้วพลิกตัวเชื่อมทุกตัว</div>` },
+
+    { id: "b5", t: "c", x: 1420, y: 280, w: 250, c: "#2e9e6b",
+      title: "ฝึกลดรูปทีละขั้น",
+      body: "เลือกกฎถูกลำดับ<br>โจทย์ยาว ๆ ยุบเหลือตัวเดียวได้",
+      detail: `<h3>ลดรูปทีละขั้น พร้อมระบุชื่อกฎ</h3>
+<p>วิธีเขียนที่ได้คะแนนเต็มคือเขียนทีละบรรทัดแล้ววงเล็บชื่อกฎไว้ข้าง ๆ ทุกบรรทัด</p>
+
+<h4>ตัวอย่างที่ 1</h4>
+<p class="frm">~(p → q) ∨ (p ∧ q)</p>
+<table><tr><th>บรรทัด</th><th>กฎที่ใช้</th></tr>
+<tr><td>≡ (p ∧ ~q) ∨ (p ∧ q)</td><td>นิเสธของ → &nbsp;[~(p→q) ≡ p ∧ ~q]</td></tr>
+<tr><td>≡ p ∧ (~q ∨ q)</td><td>แจกแจงย้อนกลับ ดึง p ออกมา</td></tr>
+<tr><td>≡ p ∧ T</td><td>p ∨ ~p ≡ T</td></tr>
+<tr><td>≡ p</td><td>p ∧ T ≡ p</td></tr></table>
+<div class="box why">คำตอบคือ p เฉย ๆ — ตรวจย้อนได้ด้วยตารางค่าความจริง 4 แถว ตรงกันทุกแถว</div>
+
+<h4>ตัวอย่างที่ 2</h4>
+<p class="frm">(p ∨ q) ∧ (p ∨ ~q)</p>
+<table><tr><th>บรรทัด</th><th>กฎที่ใช้</th></tr>
+<tr><td>≡ p ∨ (q ∧ ~q)</td><td>แจกแจงย้อนกลับ</td></tr>
+<tr><td>≡ p ∨ F</td><td>p ∧ ~p ≡ F</td></tr>
+<tr><td>≡ p</td><td>p ∨ F ≡ p</td></tr></table>
+
+<h4>ตัวอย่างที่ 3 — หานิเสธของก้อนใหญ่</h4>
+<p class="frm">หานิเสธของ p ∧ (q → r)</p>
+<table><tr><th>บรรทัด</th><th>กฎที่ใช้</th></tr>
+<tr><td>~[p ∧ (q → r)] ≡ ~p ∨ ~(q → r)</td><td>เดอมอร์แกน</td></tr>
+<tr><td>≡ ~p ∨ (q ∧ ~r)</td><td>นิเสธของ →</td></tr></table>
+
+<h4>ลำดับที่ควรลองก่อนเสมอ</h4>
+<table><tr><th>ลำดับ</th><th>ทำอะไร</th></tr>
+<tr><td>①</td><td>กำจัด → และ ↔ ให้เหลือแต่ ~ ∧ ∨ ก่อน</td></tr>
+<tr><td>②</td><td>ดันนิเสธเข้าไปข้างในสุดด้วยเดอมอร์แกน แล้วตัดนิเสธซ้อน</td></tr>
+<tr><td>③</td><td>มองหาตัวซ้ำ แล้วใช้แจกแจงย้อนกลับ ดูดกลืน หรือนิจพล</td></tr>
+<tr><td>④</td><td>ยุบคู่ที่กลายเป็น T หรือ F</td></tr></table>
+<div class="box warn"><b>กับดักที่เสียคะแนนบ่อย</b><br>ลืมพลิกตัวเชื่อมตอนใช้เดอมอร์แกน · คิดว่านิเสธของ p → q คือ p → ~q · สลับบทกลับกับแย้งสลับที่ · ใช้ p → F ≡ F แทนที่จะเป็น ~p</div>` },
+
+    { id: "n9",  t: "n", a: { id: "b4" }, b: { id: "b5" }, c: "auto", w: 2, arrow: "end", route: "e" },
+    { id: "x4",  t: "n", a: { id: "b1" }, b: { id: "b4" }, c: "#8a8a8a", w: 1.5, arrow: "end", route: "s", dash: 6 }
   ];
 })();
