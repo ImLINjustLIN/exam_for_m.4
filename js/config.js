@@ -5,9 +5,14 @@
 
 /* ---- 1) การเชื่อมต่อฐานข้อมูล (Supabase) ----
    ถ้ายังว่างอยู่ เว็บจะบันทึกข้อมูลลงเบราว์เซอร์ของผู้ใช้แต่ละคนแทน
-   เมื่อสร้างโปรเจกต์ Supabase แล้ว ให้นำค่า 2 ตัวนี้มาใส่          */
-const SUPABASE_URL = "";
-const SUPABASE_ANON_KEY = "";
+
+   คีย์ด้านล่างเป็น publishable key ซึ่ง "เปิดเผยได้" โดยตั้งใจ — มันอยู่ในโค้ด
+   ที่ทุกคนเปิดดูได้อยู่แล้ว ความปลอดภัยไม่ได้มาจากการซ่อนคีย์
+   แต่มาจาก Row Level Security ที่เปิดไว้บนตาราง notes ในฐานข้อมูล
+   (ดูไฟล์ supabase-setup.sql ที่รากโปรเจกต์)
+   ★ ห้ามเอา secret key (sb_secret_...) มาใส่ตรงนี้เด็ดขาด เพราะตัวนั้นข้าม RLS ได้ */
+const SUPABASE_URL = "https://vnibsdnonipxfjmqmkub.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_l0nwdEfoeLkMiuODbTSDgg_YjRJRn25";
 
 /* ---- 2) รายวิชาทั้งหมด ----
    id      : ชื่อรหัสภายใน (ห้ามซ้ำ, ห้ามเปลี่ยนหลังมีคนใช้งานแล้ว
