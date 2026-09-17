@@ -170,7 +170,7 @@ const Store = (() => {
 
   /* ---------- สำรอง / กู้คืน ---------- */
   function exportAll() {
-    const out = { app: "ห้องเรียนรวม", version: 2,
+    const out = { app: "สรุปปลายภาคโหดๆ", version: 2,
                   exportedAt: new Date().toISOString(), notes: {} };
     for (const id of allDocIds()) {
       try {
