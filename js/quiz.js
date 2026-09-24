@@ -2,8 +2,10 @@
    quiz.js — เครื่องทำข้อสอบ (mock test)
    ------------------------------------------------------------
    กติกา
-   • ถามก่อนว่าจะทำกี่ข้อ (1–50) และเลือกโหมดอธิบายคำตอบ
-   • สุ่มข้อจากคลัง ไม่ซ้ำกับครั้งก่อน ๆ จนกว่าคลังจะหมด
+   • ให้เลือกหัวข้อที่จะสอบก่อน (เลือกกี่หัวข้อก็ได้ ค่าเริ่มต้นคือทุกหัวข้อ)
+     จำนวนข้อที่ทำได้สูงสุดจะเท่ากับจำนวนข้อในหัวข้อที่เลือก แต่ไม่เกิน 50
+   • ถามว่าจะทำกี่ข้อ และเลือกโหมดอธิบายคำตอบ
+   • สุ่มข้อจากหัวข้อที่เลือก ไม่ซ้ำกับครั้งก่อน ๆ จนกว่าข้อในหัวข้อนั้นจะหมด
    • ถ่วงระดับความยาก ง่าย : กลาง : ยาก ให้ใกล้เคียงกัน
      และใส่ข้อโอลิมปิกไม่เกิน 2 ข้อต่อชุด (ข้ามได้)
    • ไม่บอกนักเรียนว่าคลังมีทั้งหมดกี่ข้อ
@@ -80,8 +82,48 @@ const Quiz = (() => {
     return shuffle(out);
   }
 
-  function buildSet(topicId, n) {
-    const all = bank(topicId);
+  /* ---------------- หัวข้อย่อยในคลัง (จากแท็ก t) ----------------
+     เรียงตามลำดับหัวข้อ h2 ในไฟล์เนื้อหา แล้วจัดกลุ่มตามเลขบท
+     (แท็ก "2.3 ..." อยู่บทที่ 2) ชื่อบทเอามาจาก h1 ของเนื้อหาถ้าหาได้ */
+  function topicsOf(topicId) {
+    const tags = [];
+    bank(topicId).forEach(q => { const t = q.t || ""; if (!tags.includes(t)) tags.push(t); });
+
+    const blocks = (typeof STARTER_CONTENT !== "undefined" && STARTER_CONTENT[topicId]) || [];
+    const order = {}, h1Of = {};
+    let h1 = "", k = 0;
+    blocks.forEach(b => {
+      if (b.type === "h1") h1 = b.text || "";
+      else if (b.type === "h2" && b.text && !(b.text in order)) { order[b.text] = k++; h1Of[b.text] = h1; }
+    });
+    const rank = t => (t in order) ? order[t] : 1e6 + tags.indexOf(t);
+    tags.sort((a, b) => rank(a) - rank(b));
+
+    const groups = [];
+    tags.forEach(t => {
+      const c = chapterOf(t);
+      let g = groups.find(x => x.ch === c);
+      if (!g) {
+        // ใช้ชื่อ h1 เฉพาะที่ขึ้นต้นด้วย "บทที่ N" ของบทนี้จริง ๆ
+        // (h1 ตัวแรกของบางวิชาเป็นชื่อวิชาทั้งเรื่อง ไม่ใช่ชื่อบทที่ 1)
+        const h = h1Of[t] || "";
+        let label = c ? "บทที่ " + c : "รวมบท";
+        if (c && new RegExp("^บทที่\\s*" + c + "(?!\\d)").test(h)) label = h;
+        g = { ch: c, label, tags: [] };
+        groups.push(g);
+      }
+      g.tags.push(t);
+    });
+    return { tags, groups };
+  }
+  function chapterOf(t) { const m = /^(\d+)\./.exec(t || ""); return m ? m[1] : ""; }
+
+  function pool(topicId, sel) {
+    return bank(topicId).filter(q => !sel || sel.has(q.t || ""));
+  }
+
+  function buildSet(topicId, n, sel) {
+    const all = pool(topicId, sel);
     if (!all.length) return null;
     const seen = getSeen(topicId);
     const fresh = all.filter(q => !seen.has(q.id));
@@ -116,10 +158,14 @@ const Quiz = (() => {
     });
     return host;
   }
-  function show(html) { ensureHost().hidden = false; host.innerHTML = html;
-                        document.body.classList.add("qz-open");
-                        const w = host.querySelector(".qz-win"); if (w) w.scrollTop = 0;
-                        syncPadBtn(); }
+  function show(html, keepScroll) {
+    ensureHost().hidden = false;
+    const y = keepScroll ? host.scrollTop : 0;
+    host.innerHTML = html;
+    document.body.classList.add("qz-open");
+    host.scrollTop = y;
+    syncPadBtn();
+  }
   function close() { togglePad(false); padDoc = { items: [] };
                      if (host) { host.hidden = true; host.innerHTML = ""; }
                      document.body.classList.remove("qz-open"); S = null; }
@@ -209,25 +255,71 @@ const Quiz = (() => {
       </div>`);
       return;
     }
-    S = { topicId, topicName: topicName || "", n: 20, mode: "after" };
+    const tp = topicsOf(topicId);
+    S = { topicId, topicName: topicName || "", n: 20, mode: "after",
+          topics: tp, sel: new Set(tp.tags) };
     setupScreen();
   }
 
-  function setupScreen() {
+  /* จำนวนข้อสูงสุดที่เลือกได้ = ข้อในหัวข้อที่เลือก แต่ไม่เกิน MAXQ */
+  function maxN() { return Math.min(MAXQ, pool(S.topicId, S.sel).length); }
+
+  function topicPicker() {
+    const tp = S.topics, many = tp.tags.length > 1;
+    if (!many) return "";
+    const all = tp.tags.every(t => S.sel.has(t));
+    return `<div class="qz-field">
+      <div class="qz-lrow">
+        <label class="qz-label">เลือกหัวข้อที่จะสอบ <span class="qz-dim">(เลือกได้หลายหัวข้อ)</span></label>
+        <button class="qz-link" data-q="${all ? "tpnone" : "tpall"}">${all ? "ล้างทั้งหมด" : "เลือกทั้งหมด"}</button>
+      </div>
+      <div class="qz-topics">
+        ${tp.groups.map((g, gi) => {
+          const on = g.tags.filter(t => S.sel.has(t)).length;
+          const showHead = tp.groups.length > 1;
+          return `<div class="qz-tgroup">
+            ${showHead ? `<button class="qz-tghead${on === g.tags.length ? " on" : on ? " some" : ""}" data-q="tpg:${gi}">
+                <span class="qz-tick"></span><span>${escapeHtml(g.label)}</span></button>` : ""}
+            <div class="qz-tlist">
+              ${g.tags.map(t => {
+                const i = tp.tags.indexOf(t);
+                return `<button class="qz-topic${S.sel.has(t) ? " on" : ""}" data-q="tp:${i}">
+                  <span class="qz-tick"></span><span>${escapeHtml(t || "อื่น ๆ")}</span></button>`;
+              }).join("")}
+            </div>
+          </div>`;
+        }).join("")}
+      </div>
+      <p class="qz-tpnote">${S.sel.size
+        ? `เลือกไว้ ${S.sel.size} จาก ${tp.tags.length} หัวข้อ`
+        : `<span class="qz-bad">ยังไม่ได้เลือกหัวข้อเลย — เลือกอย่างน้อย 1 หัวข้อ</span>`}</p>
+    </div>`;
+  }
+
+  function setupScreen(keepScroll) {
+    const mx = maxN();
+    if (mx) S.n = Math.min(Math.max(1, S.n), mx);
+    const quick = [5, 10, 20, 30, 50].filter(v => v < mx);
+    if (mx) quick.push(mx);
+
     show(`<div class="qz-win qz-narrow">
       <button class="qz-x" data-q="close" title="ปิด">✕</button>
       <h2>ทดลองทำข้อสอบ</h2>
       <p class="qz-sub">${escapeHtml(S.topicName)}</p>
 
-      <div class="qz-field">
-        <label class="qz-label">จะทำกี่ข้อดี? <span class="qz-dim">(1–${MAXQ} ข้อ)</span></label>
+      ${topicPicker()}
+
+      <div class="qz-field${mx ? "" : " qz-off"}">
+        <label class="qz-label">จะทำกี่ข้อดี? <span class="qz-dim">(1–${mx || 1} ข้อ)</span></label>
+        ${mx && mx < MAXQ ? `<p class="qz-cap">หัวข้อที่เลือกไว้มีข้อสอบให้ทำได้สูงสุด ${mx} ข้อ
+            อยากทำมากกว่านี้ให้เลือกหัวข้อเพิ่ม</p>` : ""}
         <div class="qz-nrow">
-          <input class="qz-num" id="qzN" type="number" min="1" max="${MAXQ}" value="${S.n}" inputmode="numeric">
+          <input class="qz-num" id="qzN" type="number" min="1" max="${mx || 1}" value="${S.n}" inputmode="numeric"${mx ? "" : " disabled"}>
           <div class="qz-quick">
-            ${[5, 10, 20, 30, 50].map(v => `<button class="qz-chip" data-q="n:${v}">${v}</button>`).join("")}
+            ${quick.map(v => `<button class="qz-chip${v === S.n ? " on" : ""}" data-q="n:${v}">${v === mx && mx < MAXQ ? "สูงสุด " + v : v}</button>`).join("")}
           </div>
         </div>
-        <input class="qz-range" id="qzR" type="range" min="1" max="${MAXQ}" value="${S.n}">
+        <input class="qz-range" id="qzR" type="range" min="1" max="${mx || 1}" value="${S.n}"${mx ? "" : " disabled"}>
       </div>
 
       <div class="qz-field">
@@ -246,21 +338,34 @@ const Quiz = (() => {
          ถ้าเจอแล้วไม่ไหว กด "ข้ามข้อนี้" ได้เลย ไม่ต้องเสียเวลา</p>
 
       <div class="qz-actions">
-        <button class="qz-primary" data-q="start">เริ่มทำข้อสอบ</button>
+        <button class="qz-primary" data-q="start"${mx ? "" : " disabled"}>เริ่มทำข้อสอบ</button>
         <button class="qz-ghost" data-q="close">ยังไม่ทำ</button>
       </div>
-    </div>`);
+    </div>`, keepScroll);
 
     const num = host.querySelector("#qzN"), rng = host.querySelector("#qzR");
-    const sync = (v) => { S.n = clampN(v); num.value = S.n; rng.value = S.n; };
-    num.addEventListener("input", () => sync(num.value));
+    const sync = (v) => {
+      S.n = clampN(v); num.value = S.n; rng.value = S.n;
+      host.querySelectorAll(".qz-chip").forEach(b =>
+        b.classList.toggle("on", b.getAttribute("data-q") === "n:" + S.n));
+    };
+    num.addEventListener("input", () => { if (num.value !== "") sync(num.value); });
+    num.addEventListener("change", () => sync(num.value));
     rng.addEventListener("input", () => sync(rng.value));
   }
-  function clampN(v) { v = Math.round(+v || 0); return Math.max(1, Math.min(MAXQ, v)); }
+  function clampN(v) { v = Math.round(+v || 0); return Math.max(1, Math.min(maxN() || 1, v)); }
+
+  /* เปิด/ปิดหัวข้อ แล้ววาดหน้าตั้งค่าใหม่โดยไม่เลื่อนหน้ากลับขึ้นบนสุด */
+  function toggleTopics(tags, on) {
+    tags.forEach(t => on ? S.sel.add(t) : S.sel.delete(t));
+    setupScreen(true);
+  }
 
   /* ---------------- เริ่มทำ ---------------- */
   function start() {
-    const built = buildSet(S.topicId, S.n);
+    if (!maxN()) return;                                   // ยังไม่ได้เลือกหัวข้อ
+    S.n = clampN(S.n);
+    const built = buildSet(S.topicId, S.n, S.sel);
     if (!built) { close(); return; }
     if (built.repeats > 0) {
       const n = built.repeats, m = built.fresh;
@@ -449,8 +554,20 @@ const Quiz = (() => {
       case "close":  close(); break;
       case "exit":   confirmExit(); break;
       case "setup":  setupScreen(); break;
-      case "n":      S.n = clampN(v); setupScreen(); break;
-      case "mode":   S.mode = v; setupScreen(); break;
+      case "n":      S.n = clampN(v); setupScreen(true); break;
+      case "mode":   S.mode = v; setupScreen(true); break;
+      case "tp": {
+        const t = S.topics.tags[+v];
+        if (t !== undefined) toggleTopics([t], !S.sel.has(t));
+        break;
+      }
+      case "tpg": {
+        const g = S.topics.groups[+v];
+        if (g) toggleTopics(g.tags, !g.tags.every(t => S.sel.has(t)));
+        break;
+      }
+      case "tpall":  toggleTopics(S.topics.tags, true); break;
+      case "tpnone": toggleTopics(S.topics.tags, false); break;
       case "start":  start(); break;
       case "pad":    togglePad(); break;
       case "go":
@@ -512,5 +629,6 @@ const Quiz = (() => {
       ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
   }
 
-  return { open, close, resetSeen, _bank: bank, _buildSet: buildSet, _pickBalanced: pickBalanced };
+  return { open, close, resetSeen, _bank: bank, _buildSet: buildSet, _pickBalanced: pickBalanced,
+           _topicsOf: topicsOf };
 })();
