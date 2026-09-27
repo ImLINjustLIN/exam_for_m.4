@@ -45,7 +45,9 @@ const state = {
   noteMode: "diagram", // "diagram" | "text"  — เข้ามาเจอโน้ตไดอะแกรมก่อน
   dirty: false,
   canvasDirty: false,
-  saving: false
+  saving: false,
+  docTopic: null,     // โน้ตปกติที่อยู่ใน state.doc เป็นของหัวข้อไหน (ใช้ตอนบันทึก)
+  boardTopic: null    // กระดานที่ติดอยู่ในช่องไดอะแกรมเป็นของหัวข้อไหน (ใช้ตอนบันทึก)
 };
 const MODE_KEY = "hr:notemode";
 const CANVAS_SUFFIX = "::canvas";
@@ -53,8 +55,7 @@ const CANVAS_SUFFIX = "::canvas";
 /* ---------------- หน้าจอ ---------------- */
 function show(id) {
   if (id !== "screen-note" && state.noteMode === "diagram") {
-    if (state.canvasDirty) saveCanvasNow();
-    DiagramNote.destroy();
+    releaseBoard();
     document.body.classList.remove("diagram-open");
   }
   $$(".screen").forEach(s => s.hidden = (s.id !== id));
@@ -121,6 +122,10 @@ function route() {
 
 /* ---------------- สมุดจด ---------------- */
 async function openNote(subject, topic) {
+  /* บันทึกงานค้างของหัวข้อเดิมให้เสร็จก่อนเปลี่ยนหัวข้อ
+     (ของเดิมจะถูกบันทึกลงหัวข้อเดิมเสมอ เพราะผูก id ไว้ตอนโหลด) */
+  flushPendingSaves();
+  state.docTopic = null;                 // ระหว่างโหลด ห้ามบันทึกโน้ตปกติลงหัวข้อไหนเลย
   state.topic = topic;
   $("#noteChip").textContent = subject.emoji + " " + subject.name +
       (subject.topics.length > 1 ? (topic.kind === "main" ? " · หลัก" : " · เสริม") : "");
@@ -138,6 +143,14 @@ async function openNote(subject, topic) {
 
   const starterText = STARTER_CONTENT[topic.id] || [];
   const starterDiag  = STARTER_DIAGRAM[topic.id] || [];
+
+  if (doc && Array.isArray(doc.blocks) && foreignOwner(doc.blocks, topic.id, "text")) {
+    backupForeign(topic.id, doc);
+    doc = { blocks: deepCopy(starterText).map(normalizeBlock) };
+    rememberStarter(topic.id, "text", starterText);
+    markSeeded(topic.id, "text");
+    try { await Store.save(topic.id, doc); } catch (e) { console.warn(e); }
+  }
 
   if (!doc || !Array.isArray(doc.blocks)) {
     doc = { blocks: deepCopy(starterText).map(normalizeBlock) };
@@ -159,7 +172,17 @@ async function openNote(subject, topic) {
     }
   }
   state.doc = doc;
+  state.docTopic = topic.id;
   noteUndo = []; noteRedo = []; lastSnap = 0;
+
+  if (cdoc && Array.isArray(cdoc.items) && foreignOwner(cdoc.items, topic.id, "diagram")) {
+    /* กระดานของหัวข้อนี้เคยถูกบันทึกทับด้วยกระดานของหัวข้ออื่น (บั๊กเดิมก่อน ?v=35)
+       เก็บของที่โดนทับไว้เป็นสำรองในเครื่อง แล้วคืนเนื้อหาตั้งต้นของหัวข้อนี้ให้ */
+    backupForeign(topic.id + CANVAS_SUFFIX, cdoc);
+    cdoc = { items: deepCopy(starterDiag) };
+    rememberStarter(topic.id, "diagram", starterDiag);
+    try { await Store.save(topic.id + CANVAS_SUFFIX, cdoc); } catch (e) { console.warn(e); }
+  }
 
   if (cdoc && Array.isArray(cdoc.items)) {
     if (!cdoc.items.length && starterDiag.length && !wasSeeded(topic.id, "diagram")) {
@@ -199,9 +222,17 @@ function applyNoteMode(m, force) {
   if (diagram) toggleLayerPanel(false);
   Find.close();
   document.body.classList.toggle("diagram-open", diagram);
-  if (diagram) mountCanvas(); else DiagramNote.destroy();
+  if (diagram) mountCanvas(); else releaseBoard();
 }
 
+/* ============================================================
+   กระดานไดอะแกรมมีตัวเดียวทั้งเว็บ (DiagramNote) และถูกยืมไปเป็นกระดานทดในหน้าข้อสอบ
+   แม้ถูกถอดออกจากหน้าแล้ว ข้างในก็ยังจำเอกสารล่าสุดไว้
+   บั๊กเดิม: บันทึกลง "หัวข้อที่เปิดอยู่ตอนนี้" แต่เอาเอกสารจาก "กระดานล่าสุด"
+   → กระดานชีวะไปทับกระดานอังกฤษได้ (เช่น เปิดอังกฤษแบบโน้ตปกติแล้วเปิดกระดานทด)
+   แก้: จำไว้ว่ากระดานที่ติดอยู่บนหน้าเป็นของหัวข้อไหน (boardTopic)
+        และบันทึกเฉพาะตอนกระดานนั้นยังติดอยู่ในช่องไดอะแกรมของสมุดจดจริง ๆ
+   ============================================================ */
 function mountCanvas() {
   DiagramNote.mount($("#diagramHost"), {
     onChange: queueCanvasSave,
@@ -210,6 +241,25 @@ function mountCanvas() {
     onExit: () => applyNoteMode("text")
   });
   DiagramNote.setDoc(state.canvasDoc);
+  state.boardTopic = state.topic ? state.topic.id : null;
+}
+function boardIsMounted() {
+  const h = $("#diagramHost");
+  return !!(state.boardTopic && h && h.firstElementChild);
+}
+/* บันทึกกระดานที่ค้างอยู่ แล้วถอดออก — ใช้ทุกครั้งที่สมุดจดเลิกแสดงกระดาน */
+function releaseBoard() {
+  if (state.canvasDirty) saveCanvasNow();
+  clearTimeout(canvasTimer);
+  state.boardTopic = null;
+  state.canvasDirty = false;
+  DiagramNote.destroy();
+}
+function flushPendingSaves() {
+  if (state.dirty) doSave();
+  if (state.canvasDirty) saveCanvasNow();
+  clearTimeout(saveTimer);
+  clearTimeout(canvasTimer);
 }
 
 let canvasTimer = null;
@@ -220,13 +270,14 @@ function queueCanvasSave() {
   canvasTimer = setTimeout(saveCanvasNow, 800);
 }
 async function saveCanvasNow() {
-  if (!state.topic) return;
+  if (!boardIsMounted()) return;
+  const tid = state.boardTopic;          // เก็บไว้ก่อน await — ห้ามอ่าน state.topic ตอนบันทึก
   const d = DiagramNote.getDoc ? DiagramNote.getDoc() : null;
   if (!d) return;
-  state.canvasDoc = d;
+  if (state.topic && state.topic.id === tid) state.canvasDoc = d;
   setSaveState("กำลังบันทึก…");
   try {
-    const where = await Store.save(state.topic.id + CANVAS_SUFFIX, d);
+    const where = await Store.save(tid + CANVAS_SUFFIX, d);
     state.canvasDirty = false;
     setSaveState(where === "cloud" ? "บันทึกแล้ว ☁" : "บันทึกในเครื่องนี้แล้ว ✓");
   } catch (e) { console.warn(e);
@@ -237,6 +288,36 @@ async function saveCanvasNow() {
 function openMock() {
   if (!state.topic) return;
   Quiz.open(state.topic.id, state.topic.name);
+}
+
+/* ตรวจว่าสมุดที่โหลดมา "เป็นของหัวข้ออื่น" หรือไม่ (ผลจากบั๊กบันทึกข้ามหัวข้อก่อน ?v=35)
+   ดูจากชิ้นเนื้อหาตั้งต้นที่ยังเหมือนต้นฉบับทุกตัวอักษร
+   ไดอะแกรม: id + หัวการ์ด · โน้ตปกติ: หัวข้อ h1/h2
+   ถ้าตรงกับของหัวข้ออื่นตั้งแต่ 3 ชิ้น และมากกว่าของตัวเองเกิน 3 เท่า ถือว่าโดนทับ */
+function foreignOwner(list, topicId, kind) {
+  const sig = kind === "diagram"
+    ? it => (it && it.id != null && (it.title || it.html)) ? it.id + "|" + (it.title || it.html) : ""
+    : it => (it && (it.type === "h1" || it.type === "h2") && (it.text || it.html))
+            ? it.type + "|" + String(it.text || it.html).replace(/<[^>]*>/g, "").trim() : "";
+  const have = new Set(list.map(sig).filter(Boolean));
+  if (!have.size) return null;
+  const src = kind === "diagram" ? STARTER_DIAGRAM : STARTER_CONTENT;
+  const score = id => (src[id] || []).reduce((n, it) => { const s = sig(it); return n + (s && have.has(s) ? 1 : 0); }, 0);
+  const own = score(topicId);
+  let best = null, bestN = 0;
+  Object.keys(src).forEach(id => {
+    if (id === topicId) return;
+    const n = score(id);
+    if (n > bestN) { bestN = n; best = id; }
+  });
+  return (bestN >= 3 && bestN > own * 3) ? best : null;
+}
+/* เก็บสมุดที่โดนทับไว้ในเครื่องก่อนซ่อม เผื่อต้องกู้คืน (ไม่ลบอะไรทิ้ง) */
+function backupForeign(key, doc) {
+  let sc = "guest";
+  try { sc = Store.scope || "guest"; } catch (e) {}
+  try { localStorage.setItem("hr:v1:" + sc + ":repaired:" + key + ":" + Date.now(), JSON.stringify(doc)); } catch (e) {}
+  console.info("ซ่อมสมุดที่ถูกหัวข้ออื่นบันทึกทับ:", key);
 }
 
 /* จำว่าเคยใส่เนื้อหาตั้งต้นของหัวข้อนี้ให้ผู้ใช้คนนี้ไปแล้วหรือยัง
@@ -761,10 +842,13 @@ function queueSave(delay = 700) {
   saveTimer = setTimeout(doSave, delay);
 }
 async function doSave() {
-  if (!state.topic || !state.doc) return;
+  /* ใช้ id ที่ผูกไว้ตอนโหลดโน้ต ไม่ใช่หัวข้อที่เปิดอยู่ตอนนี้
+     กันโน้ตของหัวข้อเก่าไปทับหัวข้อใหม่ ถ้าตัวจับเวลาบันทึกหมดหลังเปลี่ยนหัวข้อ */
+  const tid = state.docTopic, d = state.doc;
+  if (!tid || !d) return;
   state.saving = true; setSaveState("กำลังบันทึก…");
   try {
-    const where = await Store.save(state.topic.id, state.doc);
+    const where = await Store.save(tid, d);
     state.dirty = false;
     setSaveState(where === "cloud" ? "บันทึกแล้ว ☁" : "บันทึกในเครื่องนี้แล้ว ✓");
   } catch (e) {
